@@ -12,7 +12,7 @@ onnxruntime>=1.17.0         # 可选
 
 # TFLite（二选一）：
 #   Linux / ARM 边缘设备（RK3588 / Jetson / RPi）：pip install tflite-runtime
-#   Windows 桌面：tensorflow 自带 TFLite 解释器，无需单独安装
+#   Windows 桌面：pip install ai-edge-litert（tflite-runtime 无 Windows wheel）
 
 # MQTT 读数上传（可选：不安装时程序自动禁用 MQTT，其余功能不受影响）
 paho-mqtt>=1.6.0

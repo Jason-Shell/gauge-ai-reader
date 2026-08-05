@@ -239,11 +239,15 @@ class TFLiteDetector(GaugeDetector):
             from tflite_runtime.interpreter import Interpreter
         except ImportError:
             try:
-                from tensorflow.lite.python.interpreter import Interpreter
+                from ai_edge_litert.interpreter import Interpreter  # tflite-runtime 继任者
             except ImportError:
-                raise ImportError(
-                    "TFLite 后端需要 tflite_runtime 或 tensorflow，请先安装"
-                    "（Linux/ARM 推荐 pip install tflite-runtime，Windows 推荐 tensorflow）")
+                try:
+                    from tensorflow.lite.python.interpreter import Interpreter
+                except ImportError:
+                    raise ImportError(
+                        "TFLite 后端需要 tflite_runtime / ai-edge-litert / tensorflow，"
+                        "请先安装（Linux/ARM 推荐 pip install tflite-runtime，"
+                        "Windows 推荐 pip install ai-edge-litert）")
 
         path = model_cfg["tflite"]["model_path"]
         if not Path(path).exists():
@@ -266,18 +270,26 @@ class TFLiteDetector(GaugeDetector):
             blob = img.transpose(2, 0, 1)[None, ...]
         else:
             blob = img[None, ...]
-        if self.in_dtype != np.uint8:
+        qscale, qoffset = self.in_details.get("quantization", (0.0, 0))
+        if self.in_dtype == np.uint8:
+            blob = blob.astype(np.uint8)
+        elif self.in_dtype == np.int8:
+            # INT8 模型：输入量化参数基于 [0,1] 归一化浮点，先归一化再量化
+            blob = np.clip(
+                (blob.astype(np.float32) / 255.0) / qscale + qoffset,
+                -128, 127).astype(np.int8)
+        else:
             blob = blob.astype(np.float32) / 255.0     # 浮点模型归一化
 
         self.interpreter.set_tensor(self.in_details["index"], blob)
         self.interpreter.invoke()
         out = self.interpreter.get_tensor(self.out_details["index"])
 
-        # 量化输出反量化
+        # 量化输出反量化（float32 输出的 quantization 为 (0.0, 0)，跳过）
         q = self.out_details.get("quantization", (None, None))
-        if q is not None and q[0] is not None:
-            qscale, qoffset = float(q[0]), float(q[1])
-            out = (out.astype(np.float32) - qoffset) * qscale
+        qscale, qoffset = q if isinstance(q, (tuple, list)) else (None, None)
+        if qscale not in (None, 0.0):
+            out = (out.astype(np.float32) - float(qoffset)) * float(qscale)
 
         out = np.squeeze(out)
         if out.shape[0] > out.shape[1]:                # (N, C) -> (C, N)
