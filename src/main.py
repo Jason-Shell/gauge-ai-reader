@@ -18,7 +18,8 @@
     python src/main.py --source meter.jpg --backend onnx
 
 OpenCV 职责仅限：摄像头/视频读取、图像预处理、关键点连线绘制、文本显示；
-检测与关键点全部来自深度学习模型（YOLOv8-Pose）。
+检测与关键点来自深度学习模型（YOLOv8-Pose）；传统方法（径向扫描 /
+椭圆拟合）仅作为可选精修层（refiner.py），失败自动回退 DL 结果。
 """
 
 from __future__ import annotations
@@ -110,7 +111,9 @@ def _print_readings(readings: List[Reading]) -> None:
             f"  [{i}] bar: {format_reading_value(r.primary_value):>7} | "
             f"psi: {format_reading_value(r.secondary_value):>8} | "
             f"ratio: {r.ratio * 100:5.1f}% | "
-            f"conf: {r.conf:.2f}")
+            f"conf: {r.conf:.2f}"
+            + (f" | refine: {r.refine_conf:.2f}" if r.refine_used else "")
+            + (f" | refine-fail: {r.refine_error[:40]}" if r.refine_error else ""))
 
 
 def _annotate(reader: GaugeReader, frame, gauge_cfg: Dict):

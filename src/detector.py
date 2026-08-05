@@ -11,9 +11,10 @@
     - tflite      : TFLite 模型（tflite_runtime / tensorflow.lite，RK3588 / Jetson / RPi 首选）
     - mock        : 调试后端，直接使用配置中的关键点走完整读数和可视化链路
 
-设计红线（严格）：
-    - 推理阶段禁止任何传统轮廓 / 图像分析方法（HoughCircles、findContours、
-      Canny、连通域、阈值分割等全部禁用）；
+设计约定（修订版）：
+    - DL 负责表盘检测与关键点；传统图像方法（HoughCircles / findContours /
+      Canny / 阈值分割等）仅允许在 refiner.py 中、以 DL 结果为先验做数值精修，
+      且失败必须自动回退 DL 结果；
     - OpenCV 在本模块仅用于：图像预处理（letterbox、blobFromImage）、NMS、张量读写。
 
 性能说明：

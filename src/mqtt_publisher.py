@@ -65,6 +65,8 @@ class MqttPublisher:
                 "ratio": r.ratio,
                 "conf": r.conf,
                 "error": r.error,
+                "refine_used": r.refine_used,
+                "refine_conf": r.refine_conf,
                 "keypoints": [[round(x, 2), round(y, 2)] for x, y in r.keypoints],
             })
         payload = {

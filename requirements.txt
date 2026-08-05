@@ -7,6 +7,7 @@ PyYAML>=6.0
 # ONNX 导出与推理（推理默认使用 cv2.dnn，onnxruntime 仅作为备选）
 onnx>=1.15.0
 onnxsim>=0.4.0              # ONNX simplify 导出（可选）
+onnxslim>=0.1.0             # ultralytics 8.3+ 内部使用的 simplify 工具
 onnxruntime>=1.17.0         # 可选
 
 # TFLite（二选一）：

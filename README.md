@@ -1,15 +1,17 @@
 # Gauge AI Reader — 指针式仪表自动读数系统
 
-基于 **YOLOv8-Pose 关键点检测** 的指针式仪表自动读数系统，彻底移除传统
-OpenCV 图像处理（Hough 圆、连通域、轮廓提取等），推理阶段 OpenCV 仅负责
-图像读取、预处理与结果绘制。覆盖 **数据集校验 -> 训练 -> 边缘端推理部署** 的
-完整生命周期。
+基于 **YOLOv8-Pose 关键点检测** 的指针式仪表自动读数系统，采用
+**DL 主检 + 传统方法精修**的混合方案：深度学习负责表盘检测与关键点，
+传统图像方法（径向扫描 / 椭圆拟合）作为可选的数值精修层，失败自动回退
+DL 结果。覆盖 **数据集校验 -> 训练 -> 边缘端推理部署** 的完整生命周期。
 
 **目标仪表**：WIKA 双刻度表盘（主刻度 `bar` 0~250，副刻度 `psi` 0~3625.9）。
 
 ## 核心特性
 
 - **单阶段关键点检测**：表盘检测与 4 个关键点（min / max / tip / center）一次推理完成；
+- **混合精修（可选）**：径向扫描精修指针角度、椭圆拟合精修表盘中心，
+  以 DL 结果为先验、失败自动回退，兼顾鲁棒性与精度；
 - **纯数学双量程解算**：atan2 角度比例，自动处理跨 360° 边界与防除零，线性映射到 bar / psi；
 - **多后端统一抽象**：ultralytics / ONNX（cv2.dnn）/ TFLite / mock，工厂模式无感切换；
 - **全生命周期工具链**：OpenCV 数据标注校验 -> 训练 -> ONNX/TFLite 导出 -> 断点续训；
@@ -32,11 +34,13 @@ project/
 ├── datasets/
 │   └── Gauge.v1i.yolov8/    # Roboflow 数据集（train/valid/test + data.yaml）
 ├── scripts/
-│   └── train_pose.py        # YAML 修复 + OpenCV 数据校验 + 训练 + ONNX/TFLite 导出
+│   ├── train_pose.py        # YAML 修复 + OpenCV 数据校验 + 训练 + ONNX/TFLite 导出
+│   └── eval_reading.py      # 端到端读数精度评估（MAE / RMSE / 最大误差）
 ├── models/                  # 存放 .pt / .onnx / .tflite
 ├── src/
 │   ├── detector.py          # GaugeDetector 抽象基类 + ultralytics/onnx/tflite/mock 后端
-│   ├── reader.py            # 推理编排：检测 -> 角度比例 -> 双量程映射
+│   ├── refiner.py           # 传统方法精修：径向扫描指针角度 / 椭圆拟合表盘中心
+│   ├── reader.py            # 推理编排：检测 -> 精修（可选）-> 角度比例 -> 双量程映射
 │   ├── geometry.py          # 纯数学：atan2 角度、跨 360 度比例、数值映射
 │   ├── visualizer.py        # OpenCV 绘制关键点连线与双量程读数
 │   └── main.py              # argparse + 图片/视频/摄像头推理主循环
@@ -47,8 +51,10 @@ project/
 
 ## 安装依赖
 
-```bash
-pip install -r requirements.txt
+项目自带固定环境（见文末），直接用项目内解释器即可：
+
+```powershell
+& "D:\JasonXie\Code-OpenCV\Project\.python312\python.exe" -m pip install -r requirements.txt
 # Linux/ARM 边缘设备额外安装：pip install tflite-runtime
 ```
 
@@ -113,8 +119,11 @@ python src/main.py --source video.mp4 --out Results/out.mp4 --headless
 ```text
 [main] 后端: mock
 [main] 0.jpg:
-  [0] bar:    44.2 | psi:    641.2 | ratio:  17.7% | conf: 1.00
+  [0] bar:    44.2 | psi:    641.2 | ratio:  17.7% | conf: 1.00 | refine: 0.81
 ```
+
+`refine: 0.81` 表示本次读数采用了传统方法精修（值为径向扫描峰值得分）；
+未出现该标记时表示精修未启用、置信度不足或失败回退到 DL 结果。
 
 ## 核心算法
 
@@ -133,10 +142,75 @@ value = min_value + ratio * (max_value - min_value)
 副量程：0.0 ~ 3625.9 psi
 ```
 
-## 设计红线
+## 传统方法精修（可选）
 
-- 推理阶段（`src/`）OpenCV 仅用于摄像头读取、预处理、关键点绘制、文本显示；
-  **禁止** HoughCircles / findContours / Canny 等传统轮廓方法；
+`config/gauge.yaml` 的 `gauge.refinement` 控制精修行为：
+
+```yaml
+gauge:
+  refinement:
+    enabled: true             # 总开关
+    pointer:
+      enabled: true           # 径向扫描精修指针角度
+      inner_ratio: 0.30       # 扫描带内半径 / 表盘半径（避开中心转轴）
+      outer_ratio: 0.90       # 扫描带外半径 / 表盘半径（覆盖刻度环）
+      step_deg: 0.5           # 角度步长，越小越精细
+      min_score: 0.35         # 峰值得分阈值，低于则回退 DL
+      agree_deg: 4.0          # 与 DL 角度差达到该值才替换（共识门控）
+      max_disagree: 45.0      # 超过该值视为扫描误检，保留 DL
+    center:
+      enabled: true           # 椭圆拟合精修表盘中心（实测可降 MAE）
+      min_area_ratio: 0.35
+      max_area_ratio: 0.95
+      max_aspect: 1.5
+```
+
+工作原理：
+
+- **中心精修**：在检测框 ROI 内 Canny + 轮廓 + 椭圆拟合，取面积占比与
+  形态合理的椭圆，其圆心替换 DL 的 center 关键点。该步骤对表盘中心
+  的像素级偏移最敏感，实测收益最大；
+- **指针精修**：在中心附近的环形带内沿 360° 射线统计“从内缘连续的暗段”，
+  指针是贯穿环带的细长结构，得分显著高于短刻度线；取峰值射线角度并做
+  抛物线插值到亚度，再用 DL 的 tip 角消除 180° 指向歧义；
+- **共识门控**：指针扫描与 DL 高度一致时信任 DL（扫描本身有 ~1° 噪声），
+  中度分歧（`agree_deg` ~ `max_disagree`）时采用像素级更精确的扫描，
+  严重分歧时保留 DL——任何精修失败 / 低置信 / 误检都会自动回退，
+  不影响推理。
+
+## 读数精度评估
+
+mAP 反映关键点检测质量，但产品指标是读数误差。用带真值的样本做
+端到端评估（仿真集文件名即真值，或提供 CSV）：
+
+```powershell
+# 仿真集：文件名 0/50/100/150/200/250 即真值 bar
+& "D:\JasonXie\Code-OpenCV\Project\.python312\python.exe" scripts\eval_reading.py --source "gauge_sim_3 dataset" --backend onnx
+
+# 对比关闭精修时的 DL-only 基线
+& "D:\JasonXie\Code-OpenCV\Project\.python312\python.exe" scripts\eval_reading.py --source "gauge_sim_3 dataset" --backend onnx --no-refine
+
+# 自定义真值 CSV（header: path,bar[,psi]，path 相对项目根）
+& "D:\JasonXie\Code-OpenCV\Project\.python312\python.exe" scripts\eval_reading.py --source truth.csv --backend onnx
+```
+
+输出逐样本误差与 MAE / RMSE / 最大绝对误差，并可对比精修开 / 关的差异。
+
+本项目仿真集（6 张，真值 0~250 bar）实测：
+
+| 配置 | MAE (bar) | RMSE (bar) | 最大误差 (bar) |
+| --- | --- | --- | --- |
+| DL-only | 2.40 | 2.82 | 5.20 |
+| DL + 中心精修 | **1.74** | **1.92** | **3.38** |
+
+真实场景中 DL 关键点抖动更大时，可下调 `agree_deg` 让指针精修更积极，
+并用 `eval_reading.py` 量化收益。
+
+## 设计约定
+
+- **DL 主检**：表盘检测与关键点全部来自 YOLOv8-Pose，不做结构性判断；
+- **传统方法辅助**：HoughCircles / findContours / Canny / 阈值分割等仅允许在
+  `src/refiner.py` 中、以 DL 结果为先验做数值精修，失败必须回退；
 - 关键点命名严格使用 `min` / `max`（起点端 / 终点端）；
 - 训练阶段（`scripts/train_pose.py`）使用传统 OpenCV 做数据集可视化校验。
 

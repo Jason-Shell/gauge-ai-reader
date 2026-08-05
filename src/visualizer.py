@@ -2,7 +2,7 @@
 """visualizer.py —— OpenCV 可视化：绘制关键点、连线与双量程读数。
 
 OpenCV 职责仅限图像绘制（circle / line / rectangle / putText），
-绝不使用任何轮廓分析方法（HoughCircles / findContours / Canny 等）。
+轮廓 / 阈值等传统分析仅存在于 refiner.py 精修层，本模块不涉及。
 
 绘制内容：
     - 检测框；

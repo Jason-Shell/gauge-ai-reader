@@ -32,6 +32,25 @@ gauge:
   # 读数凑整开关已移至 src/main.py 顶部常量（ROUND_ENABLED / ROUND_STEP），
   # 直接改 main.py 即可切换；命令行 --round-to <步长> / --no-round 可临时覆盖
 
+  # ---- 传统方法关键点精修（DL 主检 -> 传统法辅助 -> 失败回退 DL）----
+  # center:  椭圆拟合精修表盘中心（实测将仿真集 MAE 2.40 -> 1.74 bar）
+  # pointer: 径向扫描精修指针角度，与 DL 共识门控：中度分歧才替换
+  refinement:
+    enabled: true
+    pointer:
+      enabled: true
+      inner_ratio: 0.30        # 环形扫描带内半径 / 表盘半径
+      outer_ratio: 0.90        # 环形扫描带外半径 / 表盘半径
+      step_deg: 0.5            # 扫描角度步长（度），越小越精细、越慢
+      min_score: 0.35          # 峰值得分阈值，低于则回退 DL 结果
+      agree_deg: 4.0           # 与 DL 角度差小于该值 -> 信任 DL；达到该值 -> 采用扫描
+      max_disagree: 45.0       # 与 DL 角度差超过该值 -> 疑似扫描误检，保留 DL
+    center:
+      enabled: true
+      min_area_ratio: 0.35     # 椭圆面积 / 检测框面积下限
+      max_area_ratio: 0.95     # 椭圆面积 / 检测框面积上限
+      max_aspect: 1.5          # 椭圆长短轴比上限（越接近 1 越圆）
+
 model:
   # 推理后端：ultralytics / onnx / tflite / mock
   #   mock 仅用于无模型权重时调试读数和可视化链路，
@@ -48,7 +67,7 @@ model:
     model_path: models/gauge_pose_e120.onnx # 当前默认：120 epoch 版本（端到端精度更优）
     prefer_cuda: false      # true 时优先尝试 cv2.dnn 的 CUDA 后端（需 OpenCV 带 CUDA 编译）
   tflite:
-    model_path: models/gauge_pose.tflite
+    model_path: models/gauge_pose.tflite   # 尚未导出：先运行 --export-tflite 生成
   mock:
     # 调试后端：归一化坐标（0~1），顺序 [min, max, tip, center]
     keypoints:
