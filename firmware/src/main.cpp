@@ -31,7 +31,8 @@ static String s_wifi_ssid, s_wifi_pass;
 
 static bool load_wifi_config() {
     Preferences prefs;
-    if (!prefs.begin("gauge_wifi", true)) return false;
+    // 读写模式自动创建命名空间，避免首启只读打开报 nvs_open NOT_FOUND
+    if (!prefs.begin("gauge_wifi", false)) return false;
     s_wifi_ssid = prefs.getString("ssid", "");
     s_wifi_pass = prefs.getString("pass", "");
     prefs.end();
