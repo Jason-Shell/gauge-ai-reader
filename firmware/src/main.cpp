@@ -28,6 +28,33 @@ static String s_serial_buf;
 
 // ==================== WiFi（STA 模式，串口配网 + NVS） ====================
 static String s_wifi_ssid, s_wifi_pass;
+static bool s_wifi_diag_printed = false;
+
+// 连接失败时打印一次断开原因码（201=找不到 SSID，202=认证失败，200=信标超时）
+static void on_wifi_event(arduino_event_id_t event, arduino_event_info_t info) {
+    if (event != ARDUINO_EVENT_WIFI_STA_DISCONNECTED) return;
+    if (s_wifi_diag_printed) return;   // 每次开机只提示一次，避免重连刷屏
+    s_wifi_diag_printed = true;
+    uint8_t reason = (uint8_t)info.wifi_sta_disconnected.reason;
+    Serial.printf("[wifi] 连接失败，断开原因码 %u\n", reason);
+    switch (reason) {
+        case 201:
+            Serial.println("[wifi] 未找到该 SSID：可能仅 5GHz、距离太远或 SSID 隐藏");
+            break;
+        case 202:
+            Serial.println("[wifi] 认证失败：密码错误，或安全模式不兼容");
+            break;
+        case 15:
+        case 204:
+            Serial.println("[wifi] 4-way 握手超时：多为密码错误");
+            break;
+        case 200:
+            Serial.println("[wifi] BEACON_TIMEOUT：信号弱或丢失");
+            break;
+        default:
+            break;
+    }
+}
 
 static bool load_wifi_config() {
     Preferences prefs;
@@ -373,6 +400,7 @@ void setup() {
     delay(1500);
 
     Serial.println("\n=== Gauge AI Reader (ESP32-S3, 传统法 v1) ===");
+    WiFi.onEvent(on_wifi_event, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
     if (load_calibration()) {
         Serial.println("已加载标定");
     } else {
