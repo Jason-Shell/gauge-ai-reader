@@ -108,6 +108,24 @@ static void connect_wifi() {
                       STA_HOST);
     } else {
         Serial.printf("WiFi 连接失败（%s），仅串口可用\n", s_wifi_ssid.c_str());
+        // 诊断：扫描目标 AP，打印频道 / 信号 / 认证模式
+        int n = WiFi.scanNetworks();
+        for (int i = 0; i < n; ++i) {
+            if (WiFi.SSID(i) == s_wifi_ssid) {
+                int auth = (int)WiFi.encryptionType(i);
+                const char* auth_name =
+                    auth == 0 ? "OPEN" : auth == 1 ? "WEP" :
+                    auth == 2 ? "WPA_PSK" : auth == 3 ? "WPA2_PSK" :
+                    auth == 4 ? "WPA_WPA2_PSK" : auth == 5 ? "ENTERPRISE" :
+                    auth == 6 ? "WPA3_PSK" : auth == 7 ? "WPA2_WPA3_PSK" :
+                    auth == 8 ? "WAPI_PSK" : auth == 9 ? "WPA3_ENT_192" : "OTHER";
+                Serial.printf("[wifi] 找到 %s：频道 %d 信号 %d dBm 认证 %s (%d)\n",
+                              s_wifi_ssid.c_str(), WiFi.channel(i), WiFi.RSSI(i),
+                              auth_name, auth);
+                break;
+            }
+        }
+        WiFi.scanDelete();
     }
 }
 
