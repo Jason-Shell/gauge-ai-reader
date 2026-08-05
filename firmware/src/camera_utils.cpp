@@ -1,3 +1,5 @@
+#include "Arduino.h"
+
 #include "camera_utils.h"
 
 #include <cstring>
