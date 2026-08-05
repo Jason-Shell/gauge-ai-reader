@@ -1,0 +1,17 @@
+# 训练 + 推理核心依赖
+ultralytics>=8.3.0          # YOLOv8/YOLO11-Pose 训练与 PyTorch 推理
+opencv-python>=4.9.0        # 摄像头读取、图像预处理、可视化绘制
+numpy>=1.24.0
+PyYAML>=6.0
+
+# ONNX 导出与推理（推理默认使用 cv2.dnn，onnxruntime 仅作为备选）
+onnx>=1.15.0
+onnxsim>=0.4.0              # ONNX simplify 导出（可选）
+onnxruntime>=1.17.0         # 可选
+
+# TFLite（二选一）：
+#   Linux / ARM 边缘设备（RK3588 / Jetson / RPi）：pip install tflite-runtime
+#   Windows 桌面：tensorflow 自带 TFLite 解释器，无需单独安装
+
+# MQTT 读数上传（可选：不安装时程序自动禁用 MQTT，其余功能不受影响）
+paho-mqtt>=1.6.0

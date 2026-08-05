@@ -1,0 +1,76 @@
+# =============================================================
+# 指针式仪表自动读数系统 —— 双量程配置
+# 仪表类型：WIKA 双刻度表盘（主刻度 bar，副刻度 psi）
+#
+# 关键点顺序（与数据集标注顺序完全一致，全链路统一，绝不重排）：
+#   kpts[0] = min    刻度起点端（最小值端）
+#   kpts[1] = max    刻度终点端（最大值端）
+#   kpts[2] = tip    指针尖端
+#   kpts[3] = center 表盘中心
+# =============================================================
+
+gauge:
+  # ---- 主量程（Primary）：bar ----
+  primary:
+    min_value: 0.0          # 量程最小值
+    max_value: 250.0        # 量程最大值
+    unit: bar               # 显示单位
+
+  # ---- 副量程（Secondary）：psi ----
+  secondary:
+    min_value: 0.0          # 量程最小值
+    max_value: 3625.9       # 量程最大值
+    unit: psi               # 显示单位
+
+  # 刻度扫掠方向：
+  #   auto              自动判定（推荐；数据集同时包含两种表盘几何，
+  #                     约 74% 大弧顺时针，约 26% 小弧逆时针）
+  #   clockwise         强制按 (a_max - a_min) % 360 解释
+  #   counterclockwise  强制按 (a_min - a_max) % 360 解释
+  sweep_direction: auto
+
+  # 读数凑整开关已移至 src/main.py 顶部常量（ROUND_ENABLED / ROUND_STEP），
+  # 直接改 main.py 即可切换；命令行 --round-to <步长> / --no-round 可临时覆盖
+
+model:
+  # 推理后端：ultralytics / onnx / tflite / mock
+  #   mock 仅用于无模型权重时调试读数和可视化链路，
+  #   训练完成后请把 backend 切换为 ultralytics / onnx / tflite
+  backend: onnx
+  conf_thres: 0.5           # 检测框置信度阈值
+  kpt_conf_thres: 0.5       # 关键点置信度阈值
+  input_size: 640           # 模型输入尺寸（与训练 / 导出保持一致）
+  num_keypoints: 4
+
+  pt:
+    model_path: models/gauge_pose_e120.pt   # 当前默认：120 epoch 版本（端到端精度更优）
+  onnx:
+    model_path: models/gauge_pose_e120.onnx # 当前默认：120 epoch 版本（端到端精度更优）
+    prefer_cuda: false      # true 时优先尝试 cv2.dnn 的 CUDA 后端（需 OpenCV 带 CUDA 编译）
+  tflite:
+    model_path: models/gauge_pose.tflite
+  mock:
+    # 调试后端：归一化坐标（0~1），顺序 [min, max, tip, center]
+    keypoints:
+      - [0.2266, 0.6906]   # min
+      - [0.7109, 0.7594]   # max
+      - [0.6703, 0.1391]   # tip
+      - [0.5109, 0.5031]   # center
+
+io:
+  input_image: "gauge_sim_3 dataset/0.jpg"   # 默认输入图片（--source 可覆盖）
+  out_dir: Results                           # 默认输出目录
+  show: true                                 # 是否弹窗显示（--headless 可关闭）
+  save: true                                 # 是否保存结果
+
+# MQTT 读数上传（可选，默认关闭；未安装 paho-mqtt 或 broker 不可达时自动禁用）
+mqtt:
+  enabled: false                 # true 开启，或用命令行 --mqtt 临时开启
+  host: localhost                # broker 地址
+  port: 1883                     # broker 端口
+  topic: gauge/reading           # 发布主题
+  qos: 0                         # 0 / 1 / 2
+  client_id: gauge-reader        # 客户端 ID（留空则由 broker 分配）
+  interval_sec: 1.0              # 视频/摄像头模式最短发布间隔（秒）
+  # username: ""                 # 需要鉴权时填写
+  # password: ""

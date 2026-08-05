@@ -1,0 +1,126 @@
+你是一名资深计算机视觉工程师和嵌入式AI部署工程师。请分析我当前的指针式压力表自动读数项目代码，并按照以下技术路线进行重构。
+
+当前项目主要采用传统OpenCV方案：
+
+图像输入→HoughCircle检测表盘→二值化→轮廓检测→连通域分析→提取指针→计算角度→输出读数
+
+存在问题：
+
+环境光变化影响较大；
+表盘反光容易失败；
+不同型号仪表鲁棒性差；
+指针检测精度不足；
+后期扩展困难。
+
+重构目标：
+
+采用YOLOv8-Pose + OpenCV。
+
+架构：
+
+原始图像→Gauge检测（ROI定位）→YOLOv8-Pose关键点检测→输出4个关键点（center、tip、min、max）→OpenCV角度计算→读数计算→结果显示。
+
+关键点定义：
+
+0: "min" — 刻度起点端（最小值端，正立表盘时在左下）
+1: "max" — 刻度终点端（最大值端，正立表盘时在右下）
+2: "tip" — 指针尖端
+3: "center" — 表盘中心
+
+读数计算公式：
+
+首先计算angle_pointer、angle_zero、angle_full，使用atan2()计算。
+
+量程比例：
+
+ratio = (angle_pointer - angle_zero) / (angle_full - angle_zero)
+
+限制：
+
+ratio = max(0, min(ratio, 1))
+
+最终读数：
+
+value = min_value + ratio * (max_value - min_value)
+
+例如：
+
+0~1.6MPa
+
+OpenCV职责仅负责：
+
+摄像头读取、图像预处理、关键点可视化、角度计算、读数计算、界面显示、结果保存。
+
+不要再使用：
+
+HoughCircle、连通域检测、指针轮廓提取、传统角度检测。
+
+这些逻辑全部删除。
+
+模型推理要求：
+
+支持ONNX（cv2.dnn.readNet()）、TFLite（tflite_runtime）、PyTorch（ultralytics）三种推理方式。
+
+使用统一抽象接口：
+
+class GaugeDetector
+
+方便后续切换模型。
+
+输出代码要求：
+
+project/
+├─ models/
+│  └─ gauge_pose.onnx
+├─ src/
+│  ├─ detector.py
+│  ├─ reader.py
+│  ├─ geometry.py
+│  ├─ visualizer.py
+│  └─ main.py
+├─ config/
+│  └─ gauge.yaml
+
+geometry.py要求实现：
+
+calculate_angle()
+calculate_ratio()
+calculate_value()
+normalize_angle()
+
+并添加详细注释。
+
+visualizer.py要求绘制：
+
+center、tip、zero、full
+
+并显示：
+
+Pressure: 0.62 MPa
+Ratio: 38.2%
+
+性能优化请考虑：
+
+边缘设备部署（RK3588、Jetson Nano、Raspberry Pi、Windows工业PC）。
+
+要求：
+
+尽量减少CPU计算；
+避免复杂轮廓分析；
+支持实时视频流；
+支持多仪表检测；
+支持后续MQTT上传。
+
+输出内容请直接输出：
+
+新架构设计；
+修改后的目录结构；
+每个文件完整代码；
+需要删除的旧代码；
+性能优化建议；
+ONNX部署示例；
+TFLite部署示例；
+摄像头实时推理示例。
+
+不要仅给思路，请直接给出可运行代码。
+

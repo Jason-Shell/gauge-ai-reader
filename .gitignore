@@ -1,0 +1,25 @@
+# 项目内固定 Python 环境（5.2GB 自包含快照）
+.python312/
+.venv/
+.pip-cache/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 推理 / 训练产物
+Results/
+runs/
+trash/
+
+# Ultralytics 配置目录（运行时自动生成）
+Ultralytics/
+
+# 大体积数据集压缩包
+*.zip
+
+# Roboflow 数据集（1.5GB，可由 README.roboflow.txt 中的链接重新下载）
+datasets/
+
+# 可重新下载的预训练权重
+yolov8n-pose.pt
