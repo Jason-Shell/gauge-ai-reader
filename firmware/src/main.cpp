@@ -33,8 +33,8 @@ static bool load_wifi_config() {
     Preferences prefs;
     // 读写模式自动创建命名空间，避免首启只读打开报 nvs_open NOT_FOUND
     if (!prefs.begin("gauge_wifi", false)) return false;
-    s_wifi_ssid = prefs.getString("ssid", "");
-    s_wifi_pass = prefs.getString("pass", "");
+    s_wifi_ssid = prefs.isKey("ssid") ? prefs.getString("ssid", "") : "";
+    s_wifi_pass = prefs.isKey("pass") ? prefs.getString("pass", "") : "";
     prefs.end();
     return s_wifi_ssid.length() > 0;
 }
