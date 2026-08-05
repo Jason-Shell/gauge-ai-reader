@@ -151,7 +151,7 @@ gauge:
   refinement:
     enabled: true             # 总开关
     pointer:
-      enabled: true           # 径向扫描精修指针角度
+      enabled: false          # 径向扫描（实验性，默认关闭，先评估再开启）
       inner_ratio: 0.30       # 扫描带内半径 / 表盘半径（避开中心转轴）
       outer_ratio: 0.90       # 扫描带外半径 / 表盘半径（覆盖刻度环）
       step_deg: 0.5           # 角度步长，越小越精细
@@ -163,6 +163,11 @@ gauge:
       min_area_ratio: 0.35
       max_area_ratio: 0.95
       max_aspect: 1.5
+
+  # 透视归一化（斜拍视角，实验性，默认关闭，见“已知限制”）
+  perspective:
+    enabled: false
+    min_aspect: 1.05
 ```
 
 工作原理：
@@ -177,6 +182,10 @@ gauge:
   中度分歧（`agree_deg` ~ `max_disagree`）时采用像素级更精确的扫描，
   严重分歧时保留 DL——任何精修失败 / 低置信 / 误检都会自动回退，
   不影响推理。
+
+> 默认配置只开启**中心精修**（收益最确定）；**指针精修**在仿真集上未表现出
+> 净收益，且与中心精修联用时可能因中心偏移放大分歧，故默认关闭，
+> 如需启用请用 `eval_reading.py` 在真实数据上对比后再决定。
 
 ## 读数精度评估
 
@@ -205,6 +214,37 @@ mAP 反映关键点检测质量，但产品指标是读数误差。用带真值�
 
 真实场景中 DL 关键点抖动更大时，可下调 `agree_deg` 让指针精修更积极，
 并用 `eval_reading.py` 量化收益。
+
+## 自动化测试
+
+```powershell
+& "D:\JasonXie\Code-OpenCV\Project\.python312\python.exe" -m unittest discover -s tests -v
+```
+
+覆盖：geometry 角度 / 比例 / 跨 360° 边界 / 扫掠方向 / 透视归一化；
+refiner 径向扫描 / 椭圆拟合 / 共识门控；reader 端到端（mock 后端 + 合成表盘）。
+
+## 性能基准
+
+```powershell
+& "D:\JasonXie\Code-OpenCV\Project\.python312\python.exe" scripts\benchmark.py --source "gauge_sim_3 dataset/0.jpg" --backend onnx --iters 20
+```
+
+输出 detector 后端推理与 read_frame 全链路（检测 + 精修 + 解算）的
+均值 / 中位数 / p90 延迟与等效 FPS。本机 CPU 实测（默认配置，ONNX）：
+detector 约 29ms，全链路约 30ms，等效 ~33 FPS。
+
+## 已知限制
+
+- **auto 扫掠方向**：两条候选弧互补分割圆周，指针在量程弧内时 auto 可正确
+  判定；但当指针处于量程缺口区（超量程）时会被按互补弧误读。该情形无法
+  仅凭 4 个关键点判别，生产环境建议按表盘型号固定 `sweep_direction`；
+- **视角敏感**：角度比例法假设表盘正面或近似正面朝向相机；斜拍会引入
+  角度失真。`gauge.perspective.enabled` 提供实验性的椭圆归一化校正，
+  但尚未在真实斜拍数据上验证，默认关闭；
+- **数据泛化**：训练数据为仿真 / Roboflow 增强，mAP 已饱和；真实照片上的
+  读数精度请用 `eval_reading.py` 建立带真值的评估集复测；
+- **指针精修**：径向扫描精修为实验性功能（默认关闭），启用前请先量化收益。
 
 ## 设计约定
 

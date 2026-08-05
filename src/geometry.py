@@ -20,7 +20,7 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 # ---------------------------------------------------------------------------
 # 关键点索引（严格按需求定义；表示起点 / 终点的命名一律用 min / max）
@@ -75,6 +75,31 @@ def relative_angle(a_from: float, a_to: float) -> float:
     return (a_to - a_from) % 360.0
 
 
+def _ellipse_to_circle(kpts: Kpts, ellipse: Tuple) -> List[Tuple[float, float]]:
+    """把椭圆（斜拍表盘）仿射映射为单位圆，返回圆空间坐标。
+
+    透视 / 斜拍下，正圆的表盘在图像中投影为椭圆；把椭圆仿射回单位圆
+    后再计算角度，可近似恢复表盘真实角度关系（仿射近似，适合小角度斜拍）。
+
+    ellipse 格式与 cv2.fitEllipse 一致：((cx, cy), (ma, mi), angle)，
+    其中 ma / mi 是长短轴长度（直径），angle 为旋转角（度）。
+
+    当 ma == mi（正对相机）时，该映射退化为“旋转 + 等比例缩放”，
+    不影响角度比例，可安全使用。
+    """
+    (cx, cy), (ma, mi), ang_deg = ellipse
+    ma, mi = max(float(ma), 1e-6), max(float(mi), 1e-6)
+    rad = math.radians(float(ang_deg))
+    cos_a, sin_a = math.cos(rad), math.sin(rad)
+    out = []
+    for x, y in kpts:
+        dx, dy = float(x) - cx, float(y) - cy
+        rx = (dx * cos_a + dy * sin_a) / (ma / 2.0)
+        ry = (-dx * sin_a + dy * cos_a) / (mi / 2.0)
+        out.append((rx, ry))
+    return out
+
+
 def _clamped_ratio(dist: float, span: float) -> float:
     """防除零 + 限幅：ratio = dist / span，结果强制限制在 [0, 1]。
 
@@ -92,7 +117,8 @@ def _clamped_ratio(dist: float, span: float) -> float:
     return max(0.0, min(dist / span, 1.0))
 
 
-def calculate_ratio(kpts: Kpts, sweep_direction: str = "auto") -> float:
+def calculate_ratio(kpts: Kpts, sweep_direction: str = "auto",
+                    ellipse: Optional[Tuple] = None) -> float:
     """计算指针在量程中的比例 ratio，结果限制在 [0, 1]。
 
     公式（需求文档）：
@@ -107,7 +133,16 @@ def calculate_ratio(kpts: Kpts, sweep_direction: str = "auto") -> float:
     关于 sweep_direction（数据集同时包含两种表盘几何）：
         - "clockwise"         强制按大弧解释：min -> max 沿角度增大方向；
         - "counterclockwise"  强制按小弧解释：min -> max 沿角度减小方向；
-        - "auto"              自动判定：优先选择“指针尖端落在量程弧内”的解释。
+        - "auto"              自动判定：选择“指针尖端落在量程弧内”的解释。
+
+    几何事实：两条候选弧（顺时针 / 逆时针）恰好把圆周分割为互补的两部分，
+    因此“指针在量程弧内”的解释在常态下唯一。auto 的残余局限：
+    当指针真的处于量程缺口区（超出量程）时，它会被按互补弧误读为
+    有量程读数——该情形在几何上无法仅凭 4 个关键点判别，
+    生产环境建议按表盘型号固定 sweep_direction。
+
+    ellipse（可选）：cv2.fitEllipse 格式的椭圆参数，用于斜拍视角的
+    透视归一化（见 _ellipse_to_circle）；默认 None 表示正对相机。
 
     参数:
         kpts:            4 个关键点 [min, max, tip, center]（像素坐标或归一化坐标均可，
@@ -121,6 +156,9 @@ def calculate_ratio(kpts: Kpts, sweep_direction: str = "auto") -> float:
     if kpts is None or len(kpts) < 4:
         raise ValueError(
             f"关键点数量不足（需要 4 个，实际 {0 if kpts is None else len(kpts)}）")
+
+    if ellipse is not None:
+        kpts = _ellipse_to_circle(kpts, ellipse)
 
     center = kpts[IDX_CENTER]
     a_min = calculate_angle(center, kpts[IDX_MIN])   # min 端绝对角度

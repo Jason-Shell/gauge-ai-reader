@@ -33,12 +33,13 @@ gauge:
   # 直接改 main.py 即可切换；命令行 --round-to <步长> / --no-round 可临时覆盖
 
   # ---- 传统方法关键点精修（DL 主检 -> 传统法辅助 -> 失败回退 DL）----
-  # center:  椭圆拟合精修表盘中心（实测将仿真集 MAE 2.40 -> 1.74 bar）
-  # pointer: 径向扫描精修指针角度，与 DL 共识门控：中度分歧才替换
+  # center:  椭圆拟合精修表盘中心（默认开启，实测将仿真集 MAE 2.40 -> 1.74 bar）
+  # pointer: 径向扫描精修指针角度（实验性，默认关闭；与中心精修联用时
+  #           可能因中心偏移放大扫描与 DL 的分歧而误替换，请先评估再开启）
   refinement:
     enabled: true
     pointer:
-      enabled: true
+      enabled: false
       inner_ratio: 0.30        # 环形扫描带内半径 / 表盘半径
       outer_ratio: 0.90        # 环形扫描带外半径 / 表盘半径
       step_deg: 0.5            # 扫描角度步长（度），越小越精细、越慢
@@ -50,6 +51,14 @@ gauge:
       min_area_ratio: 0.35     # 椭圆面积 / 检测框面积下限
       max_area_ratio: 0.95     # 椭圆面积 / 检测框面积上限
       max_aspect: 1.5          # 椭圆长短轴比上限（越接近 1 越圆）
+
+  # ---- 透视归一化（斜拍视角，实验性，默认关闭）----
+  # 用椭圆拟合得到的表盘椭圆参数，把椭圆仿射映射回单位圆后再计算角度，
+  # 近似校正斜拍导致的透视/角度失真（仿射近似，适合小角度斜拍）。
+  # 正对相机时椭圆近圆，自动不启用校正。
+  perspective:
+    enabled: false
+    min_aspect: 1.05          # 椭圆长短轴比达到该值才启用校正
 
 model:
   # 推理后端：ultralytics / onnx / tflite / mock

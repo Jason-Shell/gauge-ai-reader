@@ -54,9 +54,13 @@ class GaugeReader:
         self.rounding_enabled = bool(rounding_cfg.get("enabled", False))
         self.rounding_step = float(rounding_cfg.get("step", 1.0))
         refine_cfg = gauge_cfg.get("refinement", {})
+        persp_cfg = gauge_cfg.get("perspective", {})
+        self.perspective_enabled = bool(persp_cfg.get("enabled", False))
+        self.persp_min_aspect = float(persp_cfg.get("min_aspect", 1.05))
         self.refine_enabled = bool(refine_cfg.get("enabled", True)) and (
             refine_cfg.get("pointer", {}).get("enabled", True)
-            or refine_cfg.get("center", {}).get("enabled", False))
+            or refine_cfg.get("center", {}).get("enabled", False)
+            or self.perspective_enabled)
         self.refine_cfg = dict(refine_cfg)
         self.detector: GaugeDetector = create_detector(config)
 
@@ -81,14 +85,21 @@ class GaugeReader:
             )
 
             # ---- 可选：传统方法精修（失败自动回退 DL 结果）----
+            refined = None
             if self.refine_enabled:
                 try:
                     refined = refine_detection(
-                        frame, det["bbox"], det["keypoints"], self.refine_cfg)
+                        frame, det["bbox"], det["keypoints"], self.refine_cfg,
+                        need_ellipse=self.perspective_enabled)
                     if refined.get("center") is not None:
                         reading.keypoints[IDX_CENTER] = [
                             float(refined["center"][0]),
                             float(refined["center"][1])]
+                    # 透视归一化要求角度原点与椭圆中心一致
+                    if (self.perspective_enabled
+                            and refined.get("ellipse") is not None):
+                        ec = refined["ellipse"][0]
+                        reading.keypoints[IDX_CENTER] = [float(ec[0]), float(ec[1])]
                     if refined.get("tip_angle") is not None:
                         c = reading.keypoints[IDX_CENTER]
                         r_tip = math.hypot(
@@ -107,7 +118,16 @@ class GaugeReader:
 
             try:
                 # 1) 角度比例（内部处理跨 360 度边界与防除零）
-                ratio = calculate_ratio(reading.keypoints, self.sweep_direction)
+                ellipse = None
+                if self.perspective_enabled and refined is not None:
+                    ell = refined.get("ellipse")
+                    if ell is not None:
+                        _, (ema, emi), _ = ell
+                        aspect = max(ema, emi) / min(ema, emi)
+                        if aspect >= self.persp_min_aspect:  # 近圆时无需校正
+                            ellipse = ell
+                ratio = calculate_ratio(
+                    reading.keypoints, self.sweep_direction, ellipse)
                 # 2) 主量程映射：0.0 ~ 250.0 bar
                 primary = calculate_value(
                     float(self.primary["min_value"]),

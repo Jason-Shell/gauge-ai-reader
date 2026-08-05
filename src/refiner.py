@@ -87,6 +87,21 @@ def _align_to_tip(angle: float, dl_tip_angle: float) -> float:
     return a
 
 
+def apply_consensus_gate(dl_tip_angle: float, scan_angle: float,
+                         agree_deg: float, max_disagree: float) -> Optional[float]:
+    """共识门控：决定是否用扫描角度替换 DL 角度。
+
+    返回替换后的角度，或 None（保留 DL）。
+        |diff| < agree_deg      -> 两者一致，信任 DL（扫描有 ~1° 噪声）；
+        agree <= |diff| <= max  -> 中度分歧，取像素级更精确的扫描；
+        |diff| > max_disagree   -> 严重分歧，扫描可能误检，保留 DL。
+    """
+    diff = (scan_angle - dl_tip_angle + 180.0) % 360.0 - 180.0
+    if agree_deg <= abs(diff) <= max_disagree:
+        return scan_angle % 360.0
+    return None
+
+
 def refine_pointer_angle(gray: np.ndarray, center: Tuple[float, float],
                          radius: float, cfg: Dict) -> Tuple[Optional[float], Optional[float]]:
     """径向扫描精修指针角度。
@@ -112,6 +127,11 @@ def refine_pointer_angle(gray: np.ndarray, center: Tuple[float, float],
         return None, None
     thr, _ = cv2.threshold(vals.astype(np.uint8), 0, 255,
                            cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # Otsu 在纯 0/255 二值图（如合成图）上可能退化出阈值 0 或 255，
+    # 导致某一极掩膜全空；把阈值钳制到像素 5~95 分位之间保证两极都有效。
+    lo = float(np.percentile(vals, 5))
+    hi = float(np.percentile(vals, 95))
+    thr = min(max(float(thr), lo + 1e-3), hi - 1e-3)
     dark_mask = (gray < thr) & (roi_mask > 0)
     bright_mask = (gray >= thr) & (roi_mask > 0)
 
@@ -139,10 +159,13 @@ def refine_pointer_angle(gray: np.ndarray, center: Tuple[float, float],
 
 
 def refine_dial_center(gray: np.ndarray, bbox: Tuple[float, float, float, float],
-                       cfg: Dict) -> Tuple[Optional[Tuple[float, float]], Optional[float]]:
+                       cfg: Dict) -> Tuple[Optional[Tuple[float, float]],
+                                           Optional[float],
+                                           Optional[Tuple]]:
     """椭圆拟合精修表盘中心。
 
-    返回 (center, radius)；未找到合格椭圆时返回 (None, None)。
+    返回 (center, radius, ellipse)；未找到合格椭圆时返回 (None, None, None)。
+    ellipse 为 cv2.fitEllipse 格式 ((cx, cy), (ma, mi), angle)，供透视归一化使用。
     """
     min_area = float(cfg.get("min_area_ratio", 0.35))
     max_area = float(cfg.get("max_area_ratio", 0.95))
@@ -150,7 +173,7 @@ def refine_dial_center(gray: np.ndarray, bbox: Tuple[float, float, float, float]
     x1, y1, x2, y2 = (int(round(v)) for v in bbox)
     w, h = x2 - x1, y2 - y1
     if w < 24 or h < 24:
-        return None, None
+        return None, None, None
     m = int(0.05 * max(w, h))
     x1, y1 = max(0, x1 - m), max(0, y1 - m)
     x2, y2 = min(gray.shape[1], x2 + m), min(gray.shape[0], y2 + m)
@@ -160,13 +183,13 @@ def refine_dial_center(gray: np.ndarray, bbox: Tuple[float, float, float, float]
     edges = cv2.Canny(blurred, 50, 150)
     contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
-    best_center, best_radius, best_score = None, None, 0.0
+    best_center, best_radius, best_ellipse, best_score = None, None, None, 0.0
     bbox_area = float((x2 - x1) * (y2 - y1))
     for c in contours:
         if len(c) < 5:
             continue
         try:
-            (ecx, ecy), (ma, mi), _ = cv2.fitEllipse(c)
+            (ecx, ecy), (ma, mi), ang = cv2.fitEllipse(c)
         except cv2.error:
             continue
         if ma <= 0 or mi <= 0:
@@ -182,19 +205,23 @@ def refine_dial_center(gray: np.ndarray, bbox: Tuple[float, float, float, float]
             best_score = area_ratio
             best_center = (float(ecx), float(ecy))
             best_radius = (ma + mi) / 4.0
+            best_ellipse = ((float(ecx), float(ecy)), (float(ma), float(mi)),
+                            float(ang))
     if best_center is None:
-        return None, None
-    return best_center, best_radius
+        return None, None, None
+    return best_center, best_radius, best_ellipse
 
 
 def refine_detection(frame: np.ndarray, bbox: Tuple[float, float, float, float],
-                     keypoints: List[List[float]], cfg: Dict) -> Dict:
+                     keypoints: List[List[float]], cfg: Dict,
+                     need_ellipse: bool = False) -> Dict:
     """对单块表盘执行可选的传统方法精修，返回结果字典（字段可为 None）。
 
     返回字段：
         center:    (cx, cy) 或 None（椭圆拟合，默认关闭）
         tip_angle: 精修指针绝对角度 [0,360) 或 None
         tip_conf:  径向扫描峰值得分或 None
+        ellipse:   cv2.fitEllipse 格式椭圆参数或 None（透视归一化用）
     """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
     center_cfg = cfg.get("center", {})
@@ -202,6 +229,7 @@ def refine_detection(frame: np.ndarray, bbox: Tuple[float, float, float, float],
 
     center = (float(keypoints[IDX_CENTER][0]), float(keypoints[IDX_CENTER][1]))
     dl_tip = (float(keypoints[IDX_TIP][0]), float(keypoints[IDX_TIP][1]))
+    ellipse = None
     # 扫描半径：以 DL 各关键点到中心的距离估计表盘半径（刻度端点贴近表盘边缘），
     # 确保扫描带落在表盘面内，不把表盘外背景当成“暗指针”
     radius = max(
@@ -209,8 +237,9 @@ def refine_detection(frame: np.ndarray, bbox: Tuple[float, float, float, float],
         for i in range(len(keypoints)))
 
     # 1) 可选：椭圆拟合精修中心
-    if center_cfg.get("enabled", False):
-        c, r = refine_dial_center(gray, bbox, center_cfg)
+    if center_cfg.get("enabled", False) or need_ellipse:
+        c, r, ell = refine_dial_center(gray, bbox, center_cfg)
+        ellipse = ell
         if c is not None and r is not None and r >= 10.0:
             center = c
             radius = r
@@ -222,17 +251,13 @@ def refine_detection(frame: np.ndarray, bbox: Tuple[float, float, float, float],
         angle, score = refine_pointer_angle(gray, center, radius, pointer_cfg)
         if angle is not None and score is not None:
             angle = _align_to_tip(angle, dl_tip_angle)
-            diff = (angle - dl_tip_angle + 180.0) % 360.0 - 180.0
             agree_deg = float(pointer_cfg.get("agree_deg", 2.5))
             max_disagree = float(pointer_cfg.get("max_disagree", 45.0))
-            # 共识门控策略：
-            #   |diff| < agree_deg      -> 两者一致，信任 DL（扫描噪声 ~1°，无需替换）；
-            #   agree_deg <= |diff| <= max_disagree
-            #                           -> 中度分歧，多半是 DL 关键点抖动，
-            #                              取像素级更精确的扫描结果；
-            #   |diff| > max_disagree   -> 严重分歧，扫描可能误检（如遮挡/全暗），保留 DL。
-            if agree_deg <= abs(diff) <= max_disagree:
-                tip_angle = angle
+            gated = apply_consensus_gate(dl_tip_angle, angle,
+                                         agree_deg, max_disagree)
+            if gated is not None:
+                tip_angle = gated
                 tip_conf = score
 
-    return {"center": center, "tip_angle": tip_angle, "tip_conf": tip_conf}
+    return {"center": center, "tip_angle": tip_angle, "tip_conf": tip_conf,
+            "ellipse": ellipse}
