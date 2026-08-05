@@ -15,6 +15,11 @@ trash/
 # Ultralytics 配置目录（运行时自动生成）
 Ultralytics/
 
+# PlatformIO 固件构建产物
+firmware/.pio/
+firmware/tests/images/
+firmware/tests/*.exe
+
 # 大体积数据集压缩包
 *.zip
 
