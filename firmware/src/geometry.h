@@ -21,7 +21,7 @@ inline float relative_angle(float from_deg, float to_deg) {
 inline float calculate_ratio(float min_angle, float max_angle,
                              float tip_angle, int sweep) {
     const float MIN_SPAN_DEG = 5.0f;
-    const float EPS = 1e-6f;
+    const float GAUGE_EPS = 1e-6f;   // 勿用 EPS：ESP32 xtensa 头文件 #define EPS 192
     if (sweep < 0 || sweep > 2) return -1.0f;
     float a_min = normalize_angle(min_angle);
     float a_max = normalize_angle(max_angle);
@@ -40,8 +40,8 @@ inline float calculate_ratio(float min_angle, float max_angle,
         if (span_ccw < MIN_SPAN_DEG) return -1.0f;
         ratio = dist_ccw / span_ccw;
     } else {                   // sweep==2 auto：选择指针所在弧；同时落在两弧时取短弧
-        bool in_cw = dist_cw <= span_cw + EPS;
-        bool in_ccw = dist_ccw <= span_ccw + EPS;
+        bool in_cw = dist_cw <= span_cw + GAUGE_EPS;
+        bool in_ccw = dist_ccw <= span_ccw + GAUGE_EPS;
         if (in_cw && !in_ccw) {
             if (span_cw < MIN_SPAN_DEG) return -1.0f;
             ratio = dist_cw / span_cw;
