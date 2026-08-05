@@ -76,7 +76,7 @@ model:
     model_path: models/gauge_pose_e120.onnx # 当前默认：120 epoch 版本（端到端精度更优）
     prefer_cuda: false      # true 时优先尝试 cv2.dnn 的 CUDA 后端（需 OpenCV 带 CUDA 编译）
   tflite:
-    model_path: models/gauge_pose.tflite   # 尚未导出：先运行 --export-tflite 生成
+    model_path: models/gauge_pose_e120.tflite  # 由 scripts/onnx_to_tflite.py 独立转换生成
   mock:
     # 调试后端：归一化坐标（0~1），顺序 [min, max, tip, center]
     keypoints:

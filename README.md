@@ -56,6 +56,8 @@ project/
 ```powershell
 & "D:\JasonXie\Code-OpenCV\Project\.python312\python.exe" -m pip install -r requirements.txt
 # Linux/ARM 边缘设备额外安装：pip install tflite-runtime
+# Windows 主环境跑 TFLite 后端：pip install ai-edge-litert（tflite-runtime 无 Windows wheel）
+# TFLite 独立转换（tf_env）：pip install onnx==1.15.0 onnx-tf（onnx>=1.16 与 onnx-tf 不兼容）
 ```
 
 ## 1. 数据集可视化校验（传统 OpenCV）
@@ -81,6 +83,22 @@ python scripts/train_pose.py --epochs 120 --batch -1 --device 0 --export-onnx --
 
 训练产物：`runs/pose/gauge/weights/best.pt`，并自动复制为
 `models/gauge_pose.pt` / `models/gauge_pose.onnx` / `models/gauge_pose.tflite`。
+
+### TFLite 独立转换（不依赖 ultralytics）
+
+主环境 `.python312` 不含 tensorflow，无法走 ultralytics 内建 TFLite 导出；
+用 `scripts/onnx_to_tflite.py` 在 tf_env 中独立完成
+**ONNX -> SavedModel -> TFLite**：
+
+```powershell
+& "D:\Anaconda3\envs\tf_env\python.exe" scripts\onnx_to_tflite.py --out models\gauge_pose_e120.tflite
+# INT8 全量化（本模型会因单输出张量量化坍缩置信度，见“已知限制”）
+& "D:\Anaconda3\envs\tf_env\python.exe" scripts\onnx_to_tflite.py --out models\gauge_pose_e120.tflite --int8
+```
+
+脚本自动做 Interpreter 推理回环自检并清理 SavedModel 中间产物
+（`--keep-saved-model` 可保留）；onnx-tf 1.10.0 仅兼容 onnx<=1.15，
+且需要为未使用的 TFP / TFA 依赖打桩，脚本已内置处理。
 
 显存不足时（如 8GB 笔记本 GPU）：
 
@@ -199,6 +217,9 @@ mAP 反映关键点检测质量，但产品指标是读数误差。用带真值�
 # 对比关闭精修时的 DL-only 基线
 & "D:\JasonXie\Code-OpenCV\Project\.python312\python.exe" scripts\eval_reading.py --source "gauge_sim_3 dataset" --backend onnx --no-refine
 
+# TFLite 后端（Windows 需先 pip install ai-edge-litert）
+& "D:\JasonXie\Code-OpenCV\Project\.python312\python.exe" scripts\eval_reading.py --source "gauge_sim_3 dataset" --backend tflite
+
 # 自定义真值 CSV（header: path,bar[,psi]，path 相对项目根）
 & "D:\JasonXie\Code-OpenCV\Project\.python312\python.exe" scripts\eval_reading.py --source truth.csv --backend onnx
 ```
@@ -211,6 +232,7 @@ mAP 反映关键点检测质量，但产品指标是读数误差。用带真值�
 | --- | --- | --- | --- |
 | DL-only | 2.40 | 2.82 | 5.20 |
 | DL + 中心精修 | **1.74** | **1.92** | **3.38** |
+| DL + 中心精修（TFLite float32） | **1.50** | **1.55** | **2.07** |
 
 真实场景中 DL 关键点抖动更大时，可下调 `agree_deg` 让指针精修更积极，
 并用 `eval_reading.py` 量化收益。
@@ -244,6 +266,11 @@ detector 约 29ms，全链路约 30ms，等效 ~33 FPS。
   但尚未在真实斜拍数据上验证，默认关闭；
 - **数据泛化**：训练数据为仿真 / Roboflow 增强，mAP 已饱和；真实照片上的
   读数精度请用 `eval_reading.py` 建立带真值的评估集复测；
+- **INT8 量化坍缩**：现有 YOLOv8-Pose 是单输出张量，bbox 坐标（0~700）与
+  [0,1] 置信度共用同一个逐张量量化尺度，INT8 后置信度行全部归零（全样本
+  无检测，`models/gauge_pose_e120_int8.tflite` 为失败基线，见
+  `scripts/onnx_to_tflite.py` 告警）。需拆成多输出张量分别量化，或改用
+  float16 / float32；路线 B 的微型模型输出动态范围窄，不受此限；
 - **指针精修**：径向扫描精修为实验性功能（默认关闭），启用前请先量化收益。
 
 ## 设计约定
@@ -257,6 +284,7 @@ detector 约 29ms，全链路约 30ms，等效 ~33 FPS。
 ## 性能建议（边缘部署）
 
 - 部署首选 ONNX（`cv2.dnn`）或 TFLite 后端，避免 PyTorch 运行时开销；
+- Windows 上 TFLite 后端用 `ai-edge-litert`（tflite-runtime 无 Windows wheel）；
 - OpenCV 开启 CUDA 编译时，可在 `config/gauge.yaml` 中设置
   `model.onnx.prefer_cuda: true`；
 - 关键点后处理使用 numpy 向量化，无逐锚点 Python 循环。
