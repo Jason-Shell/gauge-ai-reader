@@ -2,7 +2,9 @@
 #include "esp_camera.h"
 #include "img_converters.h"
 #include "WiFi.h"
+#include "ESPmDNS.h"
 #include "WebServer.h"
+#include "Preferences.h"
 
 #include "config.h"
 #include "geometry.h"
@@ -23,6 +25,63 @@ struct Reading {
 static Reading s_reading;
 static unsigned long s_last_read_ms = 0;
 static String s_serial_buf;
+
+// ==================== WiFi（STA 模式，串口配网 + NVS） ====================
+static String s_wifi_ssid, s_wifi_pass;
+
+static bool load_wifi_config() {
+    Preferences prefs;
+    if (!prefs.begin("gauge_wifi", true)) return false;
+    s_wifi_ssid = prefs.getString("ssid", "");
+    s_wifi_pass = prefs.getString("pass", "");
+    prefs.end();
+    return s_wifi_ssid.length() > 0;
+}
+
+static void save_wifi_config(const String& ssid, const String& pass) {
+    Preferences prefs;
+    if (!prefs.begin("gauge_wifi", false)) return;
+    prefs.putString("ssid", ssid);
+    prefs.putString("pass", pass);
+    prefs.end();
+    s_wifi_ssid = ssid;
+    s_wifi_pass = pass;
+}
+
+static void clear_wifi_config() {
+    Preferences prefs;
+    if (prefs.begin("gauge_wifi", false)) {
+        prefs.remove("ssid");
+        prefs.remove("pass");
+        prefs.end();
+    }
+    s_wifi_ssid = "";
+    s_wifi_pass = "";
+}
+
+static void connect_wifi() {
+    if (s_wifi_ssid.length() == 0) {
+        Serial.println("未配置 WiFi：串口输入 WIFI SET <ssid> <pass>");
+        return;
+    }
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(s_wifi_ssid.c_str(), s_wifi_pass.c_str());
+    Serial.printf("正在连接 WiFi %s ...\n", s_wifi_ssid.c_str());
+    unsigned long wifi_t0 = millis();
+    while (WiFi.status() != WL_CONNECTED &&
+           millis() - wifi_t0 < WIFI_TIMEOUT_MS) {
+        delay(200);
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+        MDNS.begin(STA_HOST);
+        MDNS.addService("http", "tcp", 80);
+        Serial.printf("STA: %s, IP: http://%s/  (mDNS: http://%s.local/)\n",
+                      s_wifi_ssid.c_str(), WiFi.localIP().toString().c_str(),
+                      STA_HOST);
+    } else {
+        Serial.printf("WiFi 连接失败（%s），仅串口可用\n", s_wifi_ssid.c_str());
+    }
+}
 
 // ==================== 核心读数 ====================
 static bool angle_in_arc(float a, float min_a, float max_a, int sweep) {
@@ -169,7 +228,50 @@ static void serial_help() {
     Serial.println("CAL SHOW                 显示当前标定");
     Serial.println("CAL SAVE                 保存标定到 NVS");
     Serial.println("CAL CLEAR                清除标定");
+    Serial.println("WIFI SET <ssid> <pass>  保存 WiFi 配置并连接（密码存 NVS）");
+    Serial.println("WIFI SHOW                显示已配置的 WiFi（密码打码）");
+    Serial.println("WIFI CLEAR               清除 WiFi 配置");
     Serial.println("HELP                     显示本菜单");
+}
+
+static void process_wifi_command(const String& raw) {
+    String cmd = raw.substring(5);
+    cmd.trim();
+    String up = cmd;
+    up.toUpperCase();
+    if (up == "SHOW") {
+        if (s_wifi_ssid.length() == 0) {
+            Serial.println("未配置 WiFi");
+        } else {
+            Serial.printf("ssid=%s pass=%s（已存 NVS）\n",
+                          s_wifi_ssid.c_str(),
+                          s_wifi_pass.length() > 0 ? "****" : "");
+        }
+        return;
+    }
+    if (up == "CLEAR") {
+        clear_wifi_config();
+        WiFi.disconnect();
+        Serial.println("WiFi 配置已清除");
+        return;
+    }
+    if (up.startsWith("SET ")) {
+        String rest = cmd.substring(4);
+        rest.trim();
+        int sp = rest.indexOf(' ');
+        if (sp <= 0) {
+            Serial.println("用法: WIFI SET <ssid> <pass>");
+            return;
+        }
+        String ssid = rest.substring(0, sp);
+        String pass = rest.substring(sp + 1);
+        pass.trim();
+        save_wifi_config(ssid, pass);
+        Serial.printf("已保存 WiFi 配置: %s\n", ssid.c_str());
+        connect_wifi();
+        return;
+    }
+    Serial.println("未知 WiFi 命令（HELP 查看）");
 }
 
 static bool scan_angle_now(float* out_angle, float* out_conf) {
@@ -190,7 +292,13 @@ static bool scan_angle_now(float* out_angle, float* out_conf) {
 static void process_serial_line(String line) {
     line.trim();
     if (line.length() == 0) return;
-    line.toUpperCase();
+    String line_up = line;
+    line_up.toUpperCase();
+    if (line_up.startsWith("WIFI ")) {   // 密码大小写敏感，须在 toUpperCase 前处理
+        process_wifi_command(line);
+        return;
+    }
+    line = line_up;
     if (line == "HELP") { serial_help(); return; }
     if (line == "READ") {
         s_reading = compute_reading();
@@ -276,10 +384,11 @@ void setup() {
     }
     optimize_camera_image();
 
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(AP_SSID, AP_PASS);
-    Serial.printf("AP: %s / %s, IP: http://%s/\n",
-                  AP_SSID, AP_PASS, WiFi.softAPIP().toString().c_str());
+    if (load_wifi_config()) {
+        connect_wifi();
+    } else {
+        Serial.println("未配置 WiFi：串口输入 WIFI SET <ssid> <pass>");
+    }
 
     server.on("/", handle_root);
     server.on("/reading", handle_reading);
@@ -290,6 +399,13 @@ void setup() {
 }
 
 void loop() {
+    if (WiFi.status() != WL_CONNECTED) {
+        static unsigned long last_wifi_try = 0;
+        if (millis() - last_wifi_try >= 5000) {
+            last_wifi_try = millis();
+            WiFi.reconnect();
+        }
+    }
     server.handleClient();
 
     while (Serial.available()) {

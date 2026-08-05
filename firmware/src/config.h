@@ -4,9 +4,11 @@
 
 // ==================== 固件级配置（改完重新编译烧录） ====================
 
-// AP 模式 WiFi
-#define AP_SSID       "ESP32S3-GAUGE"
-#define AP_PASS       "12345678"
+// WiFi：STA 模式。SSID / 密码不写在这里，通过串口命令
+//   WIFI SET <ssid> <pass>
+// 配置并保存到 NVS（每台设备独立，密码不进固件 / 不进仓库）。
+#define STA_HOST          "gauge"       // mDNS 主机名：http://gauge.local/
+#define WIFI_TIMEOUT_MS   15000         // 连接超时（毫秒），超时后仅串口可用
 
 // 摄像头：RGB565 QVGA（320x240），无需 JPEG 解码即可做灰度扫描
 #define CAM_FRAME     FRAMESIZE_QVGA

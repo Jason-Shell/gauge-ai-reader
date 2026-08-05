@@ -12,8 +12,27 @@
 
 1. 用 VS Code 打开 `firmware/` 目录（PlatformIO 插件）；
 2. 上传：`PlatformIO: Upload`；打开串口监视器（115200）看日志；
-3. 手机/电脑连接 WiFi `ESP32S3-GAUGE`（密码 `12345678`），
-   浏览器打开 `http://192.168.4.1/` 查看实时读数与画面。
+3. 设备以 STA 模式连入局域网，手机/电脑浏览器打开启动日志里打印的
+   IP（或 `http://gauge.local/`）查看实时读数与画面。
+
+## 连接与访问（STA 模式，无 AP）
+
+WiFi 凭据不编译进固件，也不进仓库；首次烧录后用串口命令配置
+（密码只存设备 NVS，`WIFI SHOW` 打码显示）：
+
+```text
+WIFI SET <ssid> <pass>   保存并连接（例：WIFI SET MyWiFi MyPassword）
+WIFI SHOW                查看已配置 SSID（密码打码）
+WIFI CLEAR               清除配置
+```
+
+- 烧录后看串口日志：连接成功会打印 `STA: <ssid>, IP: http://192.168.x.x/`
+  （`http://gauge.local/` 为 mDNS 别名）；连接失败（超时 `WIFI_TIMEOUT_MS`）
+  则仅串口可用，程序不阻塞；
+- 路由器重启导致 IP 变化时，`loop()` 每 5 秒自动重连，重连后 mDNS 随
+  新 IP 更新；
+- `STA_HOST`（mDNS 主机名）与 `WIFI_TIMEOUT_MS` 在 `src/config.h` 中，
+  改后需重新编译；SSID / 密码始终通过串口写入，不进入代码仓库。
 
 ## 标定流程（固定安装后只需做一次，存 NVS）
 

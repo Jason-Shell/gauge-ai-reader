@@ -47,7 +47,7 @@
 
 ## 当前状态与续接点
 
-- **传统法固件 v1 已完成并推送**，待用户操作：VS Code 打开 `firmware/` → Upload 烧录 → 串口标定（`CAL CENTER AUTO` → `CAL MIN` → `CAL MAX` → `CAL SWEEP cw|ccw` → `CAL SAVE`）→ 手机连 WiFi `ESP32S3-GAUGE` / `12345678` → 浏览器 `http://192.168.4.1/` 看读数
+- **传统法固件 v1（STA 模式，串口配网）已推送**，待用户操作：VS Code 打开 `firmware/` → Upload 烧录 → 串口 `WIFI SET <ssid> <pass>` 配网（密码存 NVS）→ 串口标定（`CAL CENTER AUTO` → `CAL MIN` → `CAL MAX` → `CAL SWEEP cw|ccw` → `CAL SAVE`）→ 手机/电脑连同一局域网 → 浏览器打开串口日志打印的 IP 或 `http://gauge.local/` 看读数
 - **路线 B（待用户实拍照片后启动）**：用 tf_env（Keras）训练微型关键点/角度回归模型（输入 96~128px，INT8 TFLite <1MB），再集成 TFLite Micro 到 firmware
 - **备选**：写 ONNX → SavedModel → TFLite 独立转换脚本（不依赖 ultralytics），把现有 YOLO 模型导出成 TFLite 作对比基线
 - **待用户反馈**：firmware 编译/烧录结果、`/capture` 实拍照片
