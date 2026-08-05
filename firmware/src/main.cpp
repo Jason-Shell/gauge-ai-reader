@@ -385,7 +385,12 @@ void setup() {
     }
     optimize_camera_image();
 
-    if (load_wifi_config()) {
+    if (STA_SSID[0] != '\0') {
+        // 本地写死凭据（firmware/src/wifi_credentials.h，不入库）
+        s_wifi_ssid = STA_SSID;
+        s_wifi_pass = STA_PASS;
+        connect_wifi();
+    } else if (load_wifi_config()) {
         connect_wifi();
     } else {
         Serial.println("未配置 WiFi：串口输入 WIFI SET <ssid> <pass>");

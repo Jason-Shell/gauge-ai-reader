@@ -19,6 +19,7 @@ Ultralytics/
 firmware/.pio/
 firmware/tests/images/
 firmware/tests/*.exe
+firmware/src/wifi_credentials.h
 
 # 大体积数据集压缩包
 *.zip

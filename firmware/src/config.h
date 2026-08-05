@@ -4,9 +4,18 @@
 
 // ==================== 固件级配置（改完重新编译烧录） ====================
 
-// WiFi：STA 模式。SSID / 密码不写在这里，通过串口命令
-//   WIFI SET <ssid> <pass>
-// 配置并保存到 NVS（每台设备独立，密码不进固件 / 不进仓库）。
+// WiFi：STA 模式，两种配网方式（优先级从上到下）：
+//   1. 本地写死：在 firmware/src/ 下创建 wifi_credentials.h（复制
+//      wifi_credentials.example.h 并填入真实 SSID/密码）。该文件已被
+//      .gitignore 排除，不会进入仓库，密码不会公开；
+//   2. 串口配网：未创建上述文件时，用 WIFI SET <ssid> <pass> 写入 NVS。
+#if __has_include("wifi_credentials.h")
+#include "wifi_credentials.h"
+#else
+#define STA_SSID ""
+#define STA_PASS ""
+#endif
+
 #define STA_HOST          "gauge"       // mDNS 主机名：http://gauge.local/
 #define WIFI_TIMEOUT_MS   15000         // 连接超时（毫秒），超时后仅串口可用
 

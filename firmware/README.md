@@ -17,8 +17,14 @@
 
 ## 连接与访问（STA 模式，无 AP）
 
-WiFi 凭据不编译进固件，也不进仓库；首次烧录后用串口命令配置
-（密码只存设备 NVS，`WIFI SHOW` 打码显示）：
+两种配网方式，按优先级：
+
+1. **本地写死（推荐本机自用，密码不入库）**：把
+   `firmware/src/wifi_credentials.example.h` 复制为
+   `firmware/src/wifi_credentials.h` 并填入真实 SSID / 密码。
+   `wifi_credentials.h` 已被 `.gitignore` 排除，不会提交到仓库；
+2. **串口配网（不创建上面的文件时生效）**：首次烧录后用串口命令配置，
+   密码只存设备 NVS，`WIFI SHOW` 打码显示：
 
 ```text
 WIFI SET <ssid> <pass>   保存并连接（例：WIFI SET MyWiFi MyPassword）
@@ -32,7 +38,7 @@ WIFI CLEAR               清除配置
 - 路由器重启导致 IP 变化时，`loop()` 每 5 秒自动重连，重连后 mDNS 随
   新 IP 更新；
 - `STA_HOST`（mDNS 主机名）与 `WIFI_TIMEOUT_MS` 在 `src/config.h` 中，
-  改后需重新编译；SSID / 密码始终通过串口写入，不进入代码仓库。
+  改后需重新编译；串口配网时 SSID / 密码写入设备 NVS，不进入代码仓库。
 
 ## 标定流程（固定安装后只需做一次，存 NVS）
 
