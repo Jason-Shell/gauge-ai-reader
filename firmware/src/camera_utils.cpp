@@ -46,7 +46,9 @@ camera_config_t make_camera_config() {
     config.pin_vsync = VSYNC_GPIO_NUM;
     config.pin_href = HREF_GPIO_NUM;
     config.pin_pclk = PCLK_GPIO_NUM;
-    config.xclk_freq_hz = 20000000;
+    // ESP32-S3：xclk=16MHz 时驱动启用 psram_mode（DMA 直写 PSRAM），
+    // 是 VGA+ RGB565 大帧在 PSRAM 下的设计路径；20MHz 走内部 DMA 缓冲
+    config.xclk_freq_hz = 16000000;
     config.ledc_timer = LEDC_TIMER_0;
     config.ledc_channel = LEDC_CHANNEL_0;
     config.pixel_format = PIXFORMAT_RGB565;
@@ -60,6 +62,16 @@ camera_config_t make_camera_config() {
 
 bool init_camera() {
     Serial.println("正在初始化摄像头...");
+    // 诊断：打印 PSRAM / DMA 内存水位，并复现驱动 VGA 帧缓冲的分配
+    Serial.printf("SPIRAM free=%u largest=%u | DMA free=%u largest=%u\n",
+                  heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+                  heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
+                  heap_caps_get_free_size(MALLOC_CAP_DMA),
+                  heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+    void* t = heap_caps_aligned_alloc(16, 640 * 480 * 2 + 64,
+                                      MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
+    Serial.printf("VGA PSRAM 对齐分配测试: %s\n", t ? "OK" : "FAIL");
+    if (t) heap_caps_free(t);
     Serial.printf("Flash: %u B  PSRAM: %u B  free heap: %u\n",
                   ESP.getFlashChipSize(), ESP.getPsramSize(), ESP.getFreeHeap());
     camera_config_t camera_config = make_camera_config();
