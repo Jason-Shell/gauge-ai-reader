@@ -479,5 +479,8 @@ void loop() {
     if (now - s_last_read_ms >= READ_INTERVAL_MS) {
         s_last_read_ms = now;
         s_reading = compute_reading();
+        // USB 串口直读（无 WiFi 方案）：每周期自动输出一次读数 JSON，
+        // 串口监视器即可实时查看；WiFi 正常时网页 /reading 同样可用
+        Serial.println(reading_json(s_reading));
     }
 }

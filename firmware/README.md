@@ -61,6 +61,18 @@ CAL SAVE               保存（断电不丢）
 `READ`、`CAL CENTER AUTO`、`CAL CENTER <x> <y> <r>`、`CAL MIN [F]`、
 `CAL MAX [F]`、`CAL SWEEP cw|ccw`、`CAL SHOW`、`CAL SAVE`、`CAL CLEAR`、`HELP`
 
+## USB 串口直读（无 WiFi 方案）
+
+不需要 WiFi / 浏览器：固件每 `READ_INTERVAL_MS`（默认 500ms）自动在
+USB 串口打印一条读数 JSON，串口监视器（115200）里直接看：
+
+```json
+{"ok":true,"ts":123456,"bar":101.5,"psi":1472.1,"ratio":0.4060,"angle":152.3,"conf":0.812}
+```
+
+未标定时打印 `{"ok":false,"error":"not calibrated ..."}`。WiFi 正常时
+网页 `/reading` 与串口输出并存，互不影响。
+
 ## Web 接口
 
 - `GET /` 读数页面（每秒自动刷新）
