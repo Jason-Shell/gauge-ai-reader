@@ -19,8 +19,9 @@
 #define STA_HOST          "gauge"       // mDNS 主机名：http://gauge.local/
 #define WIFI_TIMEOUT_MS   15000         // 连接超时（毫秒），超时后仅串口可用
 
-// 摄像头：RGB565 QVGA（320x240），无需 JPEG 解码即可做灰度扫描
-#define CAM_FRAME     FRAMESIZE_QVGA
+// 摄像头：RGB565 VGA（640x480），无需 JPEG 解码即可做灰度扫描；
+// 分辨率越高预览越清晰、读数越准，但处理稍慢（PSRAM 充足，8MB）
+#define CAM_FRAME     FRAMESIZE_VGA
 #define CAM_FORMAT    PIXFORMAT_RGB565
 
 // 自动读数间隔（毫秒）

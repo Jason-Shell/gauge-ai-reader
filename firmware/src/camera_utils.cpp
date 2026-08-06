@@ -85,7 +85,7 @@ void optimize_camera_image() {
         Serial.println("警告：无法获取传感器，跳过画质优化");
         return;
     }
-    s->set_framesize(s, FRAMESIZE_QVGA);
+    s->set_framesize(s, FRAMESIZE_VGA);
     s->set_quality(s, 10);
     s->set_brightness(s, 0);
     s->set_contrast(s, 2);
@@ -106,7 +106,7 @@ void optimize_camera_image() {
     s->set_dcw(s, 1);
     s->set_vflip(s, 0);
     s->set_hmirror(s, 0);
-    Serial.println("画质优化完成（QVGA RGB565）");
+    Serial.println("画质优化完成（VGA RGB565）");
 }
 
 const uint8_t* capture_grayscale(int* out_w, int* out_h) {

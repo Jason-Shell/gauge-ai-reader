@@ -248,7 +248,7 @@ static void handle_capture() {
     size_t len = 0;
     bool ok = (fb->format == PIXFORMAT_JPEG)
                   ? (jpg = fb->buf, len = fb->len, true)
-                  : frame2jpg(fb, 80, &jpg, &len);
+                  : frame2jpg(fb, 92, &jpg, &len);
     if (!ok || !jpg) {
         esp_camera_fb_return(fb);
         server.send(500, "text/plain", "jpeg encode failed");
