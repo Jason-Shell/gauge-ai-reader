@@ -143,6 +143,22 @@ python src/main.py --source video.mp4 --out Results/out.mp4 --headless
 `refine: 0.81` 表示本次读数采用了传统方法精修（值为径向扫描峰值得分）；
 未出现该标记时表示精修未启用、置信度不足或失败回退到 DL 结果。
 
+## WiFi 传图采集（先传图、后标注读数）
+
+配合 ESP32-S3 固件的 `GET /capture`（Web 接口返回 JPEG），用
+`scripts/capture_images.py` 从 PC 定时抓取表盘照片到本地目录，
+供之后标注读数（`eval_reading.py` 的 CSV: `path,bar[,psi]`，
+或人工标注，作为路线 B 的训练/评估数据）：
+
+```powershell
+# 从设备抓 30 张，间隔 1 秒，保存到 datasets/gauge_real（不入库）
+& "D:\JasonXie\Code-OpenCV\Project\.python312\python.exe" scripts\capture_images.py ^
+    --url http://192.168.101.126 --out datasets/gauge_real --count 30 --interval 1
+```
+
+设备也支持 USB 串口每 0.5 秒输出读数 JSON（见 `firmware/README.md`），
+网络不通时仍可看读数。
+
 ## 核心算法
 
 1. 以 `center` 为原点，用 `math.atan2()` 计算各点绝对角度并归一化到 `[0, 360)`；

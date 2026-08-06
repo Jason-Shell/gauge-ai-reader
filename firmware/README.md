@@ -79,6 +79,9 @@ USB 串口打印一条读数 JSON，串口监视器（115200）里直接看：
 - `GET /reading` JSON：`{"ok":true,"bar":..,"psi":..,"ratio":..,"angle":..,"conf":..}`
 - `GET /capture` 当前画面 JPEG
 
+批量抓图可配合仓库根目录的 `scripts/capture_images.py`（PC 端定时
+拉取 `/capture` 存为 JPEG，供之后标注读数）。
+
 ## 双量程
 
 与 `config/gauge.yaml` 一致：bar 0~250，psi 0~3625.9，按同一比例线性映射
