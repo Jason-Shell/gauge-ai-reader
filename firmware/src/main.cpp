@@ -445,6 +445,11 @@ void setup() {
     server.on("/", handle_root);
     server.on("/reading", handle_reading);
     server.on("/capture", handle_capture);
+    // 浏览器会自动请求 /favicon.ico，无路由时 WebServer 会打
+    // "request handler not found" 错误日志；返回 204 静默处理
+    server.on("/favicon.ico", HTTP_GET, []() {
+        server.send(204, "text/plain", "");
+    });
     server.begin();
 
     serial_help();
